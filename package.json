@@ -1,22 +1,23 @@
 {
-  "name": "lute-compile",
-  "version": "1.0.0",
-  "description": "Takes a JSON file and inserts the metadata into it's respective audio file",
-  "main": "index.js",
-  "dependencies": {
-    "ffmetadata": "^1.4.0"
-  },
-  "devDependencies": {},
-  "scripts": {
-    "start": "node index.js"
-  },
-  "keywords": [
-    "lute",
-    "compile",
-    "audio",
-    "file",
-    "download"
-  ],
-  "author": "Connor Hergott",
-  "license": "MIT"
+    "name": "json-to-metadata",
+    "version": "1.0.2",
+    "description": "Takes a JSON file and inserts the metadata into it's respective audio file",
+    "main": "index.js",
+    "dependencies": {
+        "ffmetadata": "^1.4.0",
+        "jsonfile": "^2.4.0"
+    },
+    "devDependencies": {},
+    "scripts": {
+        "start": "node index.js"
+    },
+    "keywords": [
+        "lute",
+        "compile",
+        "audio",
+        "file",
+        "download"
+    ],
+    "author": "Connor Hergott",
+    "license": "MIT"
 }
