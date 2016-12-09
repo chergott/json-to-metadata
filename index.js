@@ -3,7 +3,7 @@ let fs = require('fs');
 
 let AudioFile = require('./audiofile');
 
-const PATH = 'C:/Users/CHergott/Downloads/_Chrome/';
+const PATH = "C:/Users/CHergott/Google Drive/Music/Lute/";
 //TODO dynamically set path
 initialize();
 
@@ -29,7 +29,6 @@ function initialize() {
             }
         });
     });
-    //TODO check if json object with same name exists, if so add metadata to the audio file
 }
 
 function isSupportedAudioFile(file) {
@@ -44,7 +43,7 @@ function isSupportedAudioFile(file) {
 
 function getMatchingJSONFile(file) {
     let possibleJSONFile = PATH + file.substring(0, file.length - 3) + 'json';
-    console.log('Checking if ' + file + ' has a matching JSON file...');
+    console.log('Checking if ' + possibleJSONFile + ' exists...');
     let hasMatch = fs.existsSync(possibleJSONFile);
     if (hasMatch) {
         let jsonFile = possibleJSONFile;

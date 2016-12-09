@@ -1,12 +1,21 @@
 'use strict'
 let JSONFile = require('jsonfile');
 let FFMetadata = require("ffmetadata");
+let request = require('request');
+let fs = require('fs');
+
+module.exports = AudioFile;
 
 function AudioFile(path) {
     this.path = path;
+    this.album = '';
+    this.albumArtwork = '';
 }
 
 let fn = AudioFile.prototype;
+
+//TODO convert m4a files to mp3
+//http://superuser.com/questions/704493/ffmpeg-convert-m4a-files-to-mp3-without-significant-loss-of-information-quali
 
 fn.writeMetadataFromJSONFile = function(jsonPath) {
     JSONFile.readFile(jsonPath, (err, obj) => {
@@ -14,23 +23,34 @@ fn.writeMetadataFromJSONFile = function(jsonPath) {
             console.error(err);
             return false;
         }
-        let ffmpegFormattedObj = this.convertToFFMPEG(obj);
-        this.setMetadata(ffmpegFormattedObj);
+        let ffmpegMetadata = this.convertToFFMPEG(obj);
+        let albumArtworkURL = obj.albumArtwork || obj.image || obj.albumCover || obj.cover || false;
+        console.log('albumArtworkURL: ', albumArtworkURL);
+        let options = {};
+        if (albumArtworkURL) {
+            let self = this;
+            this.downloadAlbumArtwork(albumArtworkURL, () => {
+                options.attachments = [this.albumArtwork];
+                this.setMetadata(ffmpegMetadata, options);
+            });
+        } else {
+            this.setMetadata(ffmpegMetadata, options);
+        }
+        fs.unlink(jsonPath);
         return true;
     });
 };
 
 fn.convertToFFMPEG = function(json) {
-    // TODO add function to download album artwork and attach it as an 'attachment' then delete it
     // http://stackoverflow.com/questions/12740659/downloading-images-with-node-js
     const PATH = 'C:/Users/CHergott/Downloads/_Chrome/';
-    let albumArtwork = PATH + 'tmp.png';
+
     let ffmpeg = {
         title: json.title || json.songName || '',
         artist: json.author || json.artist || '',
-        album: json.album || '',
-        attachments: [albumArtwork]
+        album: json.album || ''
     };
+    this.album = ffmpeg.album;
     console.log('convered to ffmpeg: ' + JSON.stringify(ffmpeg));
     return ffmpeg;
 };
@@ -43,18 +63,30 @@ fn.isSupportedAudioFile = function(filename) {
     return false;
 };
 
-fn.setPath = function(path) {
-    this.path = path;
-};
-
-
-fn.setMetadata = function(metadata) {
+fn.setMetadata = function(metadata, options) {
     console.log('writing metadata: ' + JSON.stringify(metadata));
+    console.log('writing options: ', JSON.stringify(options))
     console.log('this path: ', this.path);
-    FFMetadata.write(this.path, metadata, function(err) {
+    FFMetadata.write(this.path, metadata, options, function(err) {
         if (err) console.error("Error writing metadata", err);
-        else console.log("Data written");
+        else {
+          if(options.attachments) {
+            // remove album artwork
+            fs.unlink(options.attachments[0]);
+          }
+          console.log("Data written")
+        };
     });
 };
 
-module.exports = AudioFile;
+fn.downloadAlbumArtwork = function(url, callback) {
+    let fileExtension = '.' + url.split('.').pop();
+    console.log("attempting to download image from " + url);
+    request.head(url, (err, res, body) => {
+        // console.log('res: ', res);
+        // console.log('content-type:', res.headers['content-type']);
+        // console.log('content-length:', res.headers['content-length']);
+        let albumArtwork = this.albumArtwork = this.album + fileExtension;
+        request(url).pipe(fs.createWriteStream(albumArtwork)).on('close', callback);
+    });
+};
