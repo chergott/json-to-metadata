@@ -1,4 +1,5 @@
 node_modules/*
+.jshintrc
 *.m4a
 *.mp3
 *.json
