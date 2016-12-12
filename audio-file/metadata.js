@@ -1,47 +1,49 @@
 "use strict";
 let fs = require('fs');
-let FFMetadata = require('ffmetadata');
-let JSONFile = require('jsonfile');
-let albumArtwork = require('./album-artwork');
+let ffmetadata = require('ffmetadata');
 
-let metadata = module.exports = function() {
-    this.metadata = null;
-}
-
-let fn = metadata.prototype;
-
-fn.getMetadataFromFile = function (filepath) {
-
-    let hasMatch = fs.existsSync(filepath);
-    if (hasMatch) {
-        console.log('Found JSON file: ' + filepath);
-        this.metadata = JSONFile.readFileSync(filepath);
-    
-        return this.metadata;
-
-    } else {
-        this.metadata = null;
-        return this.metadata;
-    }
+let metadata = module.exports = function (obj) {
+    this.metadata = obj;
 };
 
-fn.write = function(filepath) {
+metadata.prototype.read = function (filepath) {
+    return new Promise(function (resolve, reject) {
+        ffmetadata.read(filepath, function (err, data) {
+            if (err) {
+                console.error("Error reading metadata", err);
+                reject();
+            } else {
+                let metadata = {
+                    title: data.title,
+                    artist: data.artist,
+                    album: data.album,
+                    albumArtwork: data.albumArtwork,
+                    genre: data.genre
+                };
+                resolve(metadata);
+            }
+        });
+
+    });
+};
+
+metadata.prototype.write = function (filepath) {
     let metadata = this.metadata = toFFMPEG(this.metadata);
+    let hasArtwork = metadata.albumArtworkPath ? true : false;
     let options = {};
-    let hasArtwork = metadata.albumArtwork ? true : false;
 
     if (hasArtwork) {
         options.attachments = [metadata.albumArtwork];
     }
-    console.log('filepath: ', filepath);
-    FFMetadata.write(filepath, metadata, options, function(err) {
+
+    ffmetadata.write(filepath, metadata, options, function (err) {
         if (err) console.error("Error writing metadata", err);
         else {
             if (options.attachments) {
                 // remove album artwork
                 fs.unlink(options.attachments[0]);
             }
-            console.log("Data written");
+            console.log("Metadata written to  ", filepath);
         }
     });
 };
@@ -51,10 +53,11 @@ function toFFMPEG(metadata) {
 
     let ffmpeg = {
         title: metadata.title || metadata.songName || '',
-        artist: metadata.author || metadata.artist || '',
-        album: metadata.album || ''
+        artist: metadata.artist || metadata.author || '',
+        album: metadata.album || '',
+        albumArtwork: metadata.albumArtwork || metadata.albumArtworkURL || ''
     };
 
-    console.log('convered to ffmpeg: ' + JSON.stringify(ffmpeg));
+    console.log('converted to ffmpeg: ' + JSON.stringify(ffmpeg));
     return ffmpeg;
 };

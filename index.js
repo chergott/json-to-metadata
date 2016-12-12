@@ -1,25 +1,41 @@
 "use strict";
 
-let fs = require('fs');
+// let fs = require('fs');
+let fs = require('fs-extra');
+let path = require('path');
 let AudioFile = require('./audio-file');
 
-const PATH = "C:/Users/conno/Downloads";
+// const PATH = "C:/Users/conno/Downloads";
+
 //TODO dynamically set path
 
 (function () {
+    main();
+    // scanItunesLibrary();
+})();
 
-    let files = fs.readdirSync(PATH);
+function main() {
+    const PATH = "C:/Users/CHergott/Downloads/test";
+    let files = fs.walkSync(PATH);
+    analyzeFiles(files);
+}
 
-    files.forEach(function (filename) {
+function scanItunesLibrary() {
+    const ITUNES_LIBRARY_PATH = "M:/Audio/Music";
+    let files = fs.walkSync(ITUNES_LIBRARY_PATH);
+    analyzeFiles(files);
+}
 
-        if (isAudioFile(filename)) {
-            console.log('Audio File: ', filename);
-            let audioFile = new AudioFile(PATH + '/' + filename);
+function analyzeFiles(files) {
+
+    files.forEach(function (filepath) {
+        if (isAudioFile(filepath)) {
+            console.log('Checking audio file: ', filepath);
+            let audioFile = new AudioFile(filepath);
             audioFile.writeMetadata();
         }
-        //TODO call external api to possibly get metadata
     });
-})();
+}
 
 function isAudioFile(file) {
     const REGEX_AUDIO_FILE_TYPES = /\.m((p3)|(4a))$/;

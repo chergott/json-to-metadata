@@ -5,6 +5,7 @@
   "main": "index.js",
   "dependencies": {
     "ffmetadata": "^1.4.0",
+    "fs-extra": "^1.0.0",
     "jsonfile": "^2.4.0",
     "request": "^2.75.0"
   },
