@@ -100,11 +100,8 @@ function walkDirectoryForAudioFiles(directory) {
                     // Prerequisites for getting new metadata
                     let condition = !originalMetadata.album;
                     if (condition) {
-
                         audioFile.getExternalMetadata().then((externalMetadata) => {
-
                             audioFile.writeMetadata(externalMetadata).then(() => {
-
                                 count++;
                                 modifiedAudioFiles.push(filepath);
 
@@ -132,9 +129,7 @@ function walkDirectoryForAudioFiles(directory) {
                 });
             }
         })
-        .on('end', function () {
-            // console.log('!END modifiedAudioFiles.length: ', modifiedAudioFiles.length);
-        });
+        .on('end', function () {});
 }
 
 function analyzeFiles(files) {

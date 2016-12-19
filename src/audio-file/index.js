@@ -39,13 +39,8 @@ AudioFile.prototype.getExternalMetadata = function () {
                 album: self.album
             };
             metadata.getMetadataFromSpotify(songOptions).then(spotifyMetadata => {
-                if (spotifyMetadata) {
-                    spotifyMetadata.source = 'spotify';
-                    resolve(spotifyMetadata);
-                } else {
-                    reject();
-                }
-
+                spotifyMetadata.source = 'spotify';
+                resolve(spotifyMetadata);
             });
         }
     });
