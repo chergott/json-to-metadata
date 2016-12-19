@@ -1,5 +1,4 @@
-"use strict";
-let path = require('path');
+import path from 'path';
 
 module.exports = function (filepath) {
     let filename = path.basename(filepath);
@@ -10,7 +9,6 @@ module.exports = function (filepath) {
         artist: parseArtist(filename),
         title: parseTitle(filename)
     };
-    // console.log(parsedData);
     return parsedData;
 };
 
