@@ -38,10 +38,10 @@ module.exports = {
             if (err) console.error("Error writing metadata", err);
             else {
                 if (hasArtwork) {
-                    // remove album artwork
+                    // remove album artwork image
                     fs.unlink(options.attachments[0]);
                 }
-                // console.log("Metadata written to  ", filepath);
+                // console.log('wrote ', metadata, ' to ', filepath);
             }
         });
     },
@@ -55,43 +55,56 @@ module.exports = {
         return metadata;
     },
 
-    getMetadataFromSpotify: function (options) {
+    getMetadataFromSpotify: function (metadata = {}) {
         let self = this;
-        let songTitle = options.title || null;
-        let songArtist = options.artist || null;
-        let songAlbum = options.album || null;
+        let hasTitle = !!(metadata.title);
+        let hasArtist = !!(metadata.artist);
+        let hasAlbum = !!(metadata.album);
+        let hasGenres = !!(metadata.genre);
+
         let type = null,
             query = null,
             limit = null;
 
-        if (songTitle) {
-            type = 'track';
-            query = encodeURI(songTitle);
-            limit = 10;
-        } else if (songArtist) {
-            type = 'artist';
-            query = encodeURI(songArtist);
-            limit = 5;
-        } else if (songAlbum) {
-            type = 'album';
-            query = encodeURI(songAlbum);
-            limit = 3;
-        } else {
-            return false;
-        }
-
-        let queryParams = '?q=' + query + '&type=' + type + '&limit=' + limit;
-        let spotifyURL = 'https://api.spotify.com/v1/search' + queryParams;
-
         return new Promise(function (resolve, reject) {
+            if (hasTitle) {
+                type = 'track';
+                query = encodeURI(metadata.title);
+                limit = 10;
+            } else if (hasArtist) {
+                type = 'artist';
+                query = encodeURI(metadata.artist);
+                limit = 5;
+            } else if (hasAlbum) {
+                type = 'album';
+                query = encodeURI(metadata.album);
+                limit = 3;
+            } else {
+                reject();
+            }
+
+            let queryParams = '?q=' + query + '&type=' + type + '&limit=' + limit;
+            let spotifyURL = 'https://api.spotify.com/v1/search' + queryParams;
             request(spotifyURL, function (error, response, body) {
                 if (!error && response.statusCode == 200) {
                     let spotifyObj = JSON.parse(body);
-                    // @TODO only supports searching by track at the moment
-                    let matchedMetadata = getMatchingTitleMetadata(spotifyObj, options);
-                    resolve(matchedMetadata);
-                } else {
-                    resolve(null);
+                    if (spotifyObj.hasOwnProperty('tracks')) {
+                        let trackMetadata = getMatchingTitleMetadata(spotifyObj.tracks, metadata.title, metadata.artist);
+                        // Get genres from artist metadata
+                        return self.getMetadataFromSpotify({
+                                artist: trackMetadata.artist
+                            })
+                            .then(artistMetadata => {
+                                // console.log('I got some genres for ', metadata.artist ,'... you want some? ', artistMetadata.genres);
+                                // trackMetadata.genre = artistMetadata.genres.join(', ');
+                                trackMetadata.genre = artistMetadata.genres[0];
+                                resolve(trackMetadata);
+                            });
+                    } else if (spotifyObj.hasOwnProperty('artists')) {
+                        resolve(getMatchingArtistMetadata(spotifyObj.artists, metadata.artist));
+                    } else {
+                        reject();
+                    }
                 }
             });
         });
@@ -100,10 +113,14 @@ module.exports = {
 
 function toFFMPEG(metadata) {
     let ffmpeg = {
-        title: metadata.title || metadata.songName || '',
-        artist: metadata.artist || metadata.author || '',
-        album: metadata.album || '',
-        albumArtwork: metadata.albumArtwork || metadata.albumArtworkURL || ''
+        title: metadata.title || metadata.songName || null,
+        artist: metadata.artist || metadata.author || null,
+        album: metadata.album || null,
+        albumArtwork: metadata.albumArtwork || metadata.albumArtworkURL || null,
+        genre: metadata.genre || null,
+        disc: metadata.disc || metadata.diskNumber || metadata.disk || null,
+        // explicit: metadata.explicit || null,
+        track: metadata.track || metadata.trackNumber || null
     };
     return ffmpeg;
 }
@@ -123,30 +140,55 @@ function encodeURI(uri) {
     return encoded;
 }
 
-function getMatchingTitleMetadata(spotifyObj, options) {
-    let songTitle = options.title ? options.title.toUpperCase() : null;
-    let songArtist = options.artist ? options.artist.toUpperCase() : null;
+function getMatchingTitleMetadata(tracks, title, artist) {
+    let songTitle = title ? title.toUpperCase() : null;
+    let songArtist = artist ? artist.toUpperCase() : null;
 
-    let tracks = spotifyObj.tracks.items;
+    let items = tracks.items;
     let possibleMatches = [];
 
-    for (let index in tracks) {
+    for (let index in items) {
 
-        let track = tracks[index];
+        let track = items[index];
         let artist = track.artists[0].name;
         let album = track.album.name;
         let title = track.name;
         let albumArtworkURL = track.album.images[0].url;
+        let disc = track.disc_number;
+        let explicit = track.explicit;
+        let trackNumber = track.track_number;
         let trackMetadata = {
             title,
             artist,
             album,
-            albumArtworkURL
+            albumArtworkURL,
+            disc,
+            explicit,
+            trackNumber
         };
         possibleMatches.push(trackMetadata);
         let isMatchingTrack = (songArtist && songArtist.includes(artist.toUpperCase())) || !songArtist && songTitle === title.toUpperCase();
         if (isMatchingTrack) return trackMetadata;
     }
-    // console.log('Could not find match for ' + songTitle + ' in: ', possibleMatches);
+    console.log('Could not find match for ' + songTitle + ' in: ', possibleMatches);
+    return false;
+}
+
+function getMatchingArtistMetadata(artists, name) {
+
+    let items = artists.items;
+
+    for (let index in items) {
+
+        let artist = items[index];
+        let isMatchingArtist = artist.name.toLowerCase() === name.toLowerCase();
+        if (isMatchingArtist) return {
+            genres: artist.genres,
+            images: artist.images,
+            name: artist.name,
+            popularity: artist.popularity
+        };
+    }
+    console.log('Could not find matching artist ' + artist);
     return false;
 }

@@ -3,18 +3,37 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import clear from 'clear';
-import chalk from 'chalk';
-import figlet from 'figlet';
 import inquirer from 'inquirer';
-import prettyjson from 'prettyjson';
+import log from './log';
 
-init();
+/* CONDITION FOR FILE TO BE MODIFIED */
+/* Default: missing the "album" */
+function isMissingMetadata(originalMetadata) {
+    return true; // can switch to true to always overwrite audio files
+    return !originalMetadata.album;
+}
 
-function init() {
+let songMetadata = function () {
+    this.init();
+    this.audioFiles = [];
+    this.unmodifiedAudioFiles = [];
+    this.modifiedAudioFiles = [];
+    this.errorAudioFiles = [];
+    this.count = 0;
+    this.total = 0;
+};
+
+let fn = songMetadata.prototype;
+
+fn.init = function () {
     clear();
-    const TITLE = figlet.textSync('Song Metadata', {
-        horizontalLayout: 'full'
+    let self = this;
+
+    log('Song Metadata', {
+        type: 'h1',
+        color: 'blue'
     });
+
     const OPTIONS = [{
         type: 'list',
         name: 'option',
@@ -24,124 +43,190 @@ function init() {
             return val.toLowerCase();
         }
     }];
-    log(chalk.blue(TITLE));
     inquirer.prompt(OPTIONS).then((selection) => {
-        main(selection);
+        self.main(selection.option);
     });
-}
+};
 
-function main(selection) {
-    let option = selection.option || 'auto';
-    let directory = null;
-
-    switch (option) {
+fn.main = function (selection) {
+    switch (selection) {
         case 'auto':
-            const CONFIRMATION_QUESTION = {
-                type: 'list',
-                name: 'confirmation',
-                message: 'Are you sure? This will scan almost every file on your computer and will take a long time.',
-                choices: ['Yes', 'No'],
-                filter: function (val) {
-                    return val.toLowerCase();
-                }
-            };
-            inquirer.prompt(CONFIRMATION_QUESTION).then(function (answer) {
-                let isConfirmed = answer.confirmation === 'yes';
-                if (isConfirmed) walkDirectoryForAudioFiles(os.homedir());
-                else init();
-            });
+            this.searchHomeDirectory();
             break;
         case 'itunes':
-            //TODO
-            directory = os.homedir() + '\\Music\\iTunes\\iTunes Media';
-            walkDirectoryForAudioFiles(directory);
-            // directory = "M:/Audio/Music";
+            this.searchITunesLibraryDirectory();
             break;
         case 'custom':
-            //TODO
-            const CUSTOM_DIRECTORY_QUESTION = {
-                type: 'input',
-                name: 'custom_directory',
-                message: 'What directory would you like to scan?',
-                default: function () {
-                    return os.homedir() + '\\Downloads';
-                }
-            };
-            inquirer.prompt(CUSTOM_DIRECTORY_QUESTION).then(function (answer) {
-                walkDirectoryForAudioFiles(answer.custom_directory);
-            });
+            this.searchCustomDirectory();
             break;
-        default:
-            directory = __dirname;
     }
+};
 
-    // return false;
+/* 1. Home Directory */
+fn.searchHomeDirectory = function () {
+    let self = this;
+    const CONFIRMATION_QUESTION = {
+        type: 'list',
+        name: 'confirmation',
+        message: 'Are you sure? This will scan almost every file on your computer and will take a long time.',
+        choices: ['Yes', 'No'],
+        filter: function (val) {
+            return val.toLowerCase();
+        }
+    };
+    inquirer.prompt(CONFIRMATION_QUESTION).then(function (answer) {
+        let isConfirmed = answer.confirmation === 'yes';
+        if (isConfirmed) self.walkDirectoryForAudioFiles(os.homedir());
+        else self.init();
+    });
+};
 
-}
+/* 2. iTunes Library Directory */
+fn.searchITunesLibraryDirectory = function () {
+    let directory = os.homedir() + '\\Music\\iTunes\\iTunes Media';
+    this.walkDirectoryForAudioFiles(directory);
+};
+
+/* 3. Custom Directory */
+fn.searchCustomDirectory = function () {
+    let self = this;
+    const CUSTOM_DIRECTORY_QUESTION = {
+        type: 'input',
+        name: 'custom_directory',
+        message: 'What directory would you like to scan?',
+        default: function () {
+            return os.homedir() + '\\Downloads';
+        }
+    };
+    inquirer.prompt(CUSTOM_DIRECTORY_QUESTION).then(function (answer) {
+        self.walkDirectoryForAudioFiles(answer.custom_directory);
+    });
+};
 
 
-function walkDirectoryForAudioFiles(directory) {
-    log(`Finding audio files in ${directory}...`, 'white');
-
-    let audioFiles = [];
-    let modifiedAudioFiles = [];
-    let unmodifiedAudioFiles = [];
+fn.walkDirectoryForAudioFiles = function (directory) {
+    log(`Finding audio files in ${directory}...`);
+    let self = this;
     let count = 0;
-    let isDone = false;
+    let totalAudioFiles = 0;
 
     fs.walk(directory)
         .on('data', (file) => {
-            isDone = false;
             let filepath = file.path;
-            if (isAudioFile(filepath)) {
-                audioFiles.push(filepath);
-                let audioFile = new AudioFile(filepath);
-                audioFile.getCurrentMetadata().then((originalMetadata) => {
-                    // Prerequisites for getting new metadata
-                    let condition = !originalMetadata.album;
-                    if (condition) {
-                        audioFile.getExternalMetadata().then((externalMetadata) => {
-                            audioFile.writeMetadata(externalMetadata).then(() => {
-                                count++;
-                                modifiedAudioFiles.push(filepath);
+            if (!isAudioFile(filepath)) return;
 
-                                log(`\n${count}. Audio File: ${filepath}`, 'yellow');
-                                log('- Original metadata: ');
-                                log(originalMetadata, 'gray');
+            let audioFile = new AudioFile(filepath);
+            self.audioFiles.push(filepath);
 
-                                switch (externalMetadata.source) {
-                                    case 'spotify':
-                                        log('- Updated metadata from Spotify: ', 'green');
-                                        break;
-                                    case 'json':
-                                        log('- Updated metadata from local JSON file: ');
-                                        break;
-                                    default:
-                                        log('- Updated metadata from unknown source: ');
-                                }
+            audioFile.getCurrentMetadata()
+                .then((originalMetadata) => {
 
-                                log(externalMetadata, 'blue');
+                    if (isMissingMetadata(originalMetadata)) {
+
+                        audioFile.getExternalMetadata()
+                            .then((externalMetadata) => {
+
+                                audioFile.writeMetadata(externalMetadata)
+                                    .then(self.addAudioFile(audioFile, 'modified'));
+
+                            }).catch(function (e) {
+
+                                self.addAudioFile(audioFile, 'error');
                             });
-                        });
                     } else {
-                        unmodifiedAudioFiles.push(filepath);
+                        self.addAudioFile(audioFile, 'unmodified');
                     }
+
                 });
-            }
         })
-        .on('end', function () {});
-}
+        .on('end', function () {
+            self.total = self.audioFiles.length;
+        });
+};
 
-function analyzeFiles(files) {
+fn.addAudioFile = function (audioFile, status) {
+    this.count++;
+    let audioFileString = `\n${this.count}. ${audioFile.filename}`;
+    let logOptions = {
+        color: 'white'
+    };
 
-    files.forEach(function (filepath) {
-        if (isAudioFile(filepath)) {
-            console.log('Audio File: ', filepath);
-            // let audioFile = new AudioFile(filepath);
-            // audioFile.writeMetadata();
-        }
+    switch (status) {
+        case 'modified':
+            this.modifiedAudioFiles.push(audioFileString);
+            logOptions = {
+                color: 'white',
+                background: 'blue'
+            };
+            break;
+        case 'unmodified':
+            this.unmodifiedAudioFiles.push(audioFileString);
+            break;
+        default:
+            this.errorAudioFiles.push(audioFileString);
+            break;
+    }
+
+    log(`\n${this.count}. ${audioFile.filename}`, logOptions);
+
+    // Print Original Metadata
+    log(audioFile.originalMetadata, {
+        color: 'gray'
     });
-}
+
+    // Print Updated Metadata
+    if (status === 'modified') {
+        log(audioFile.updatedMetadata, {
+            color: 'cyan'
+        });
+    }
+
+    // Print Error Message 
+    if (status === 'error') {
+        log(audioFile.errorMessage, {
+            color: 'red'
+        });
+    }
+
+    if (this.total === this.count) {
+        this.end();
+    }
+};
+
+fn.end = function () {
+    this.printSummary();
+};
+
+fn.printSummary = function () {
+    // Modified Audio Files
+    if (this.modifiedAudioFiles.length) {
+        log('Modified', {
+            type: 'h1',
+            color: 'blue'
+        });
+        log(this.modifiedAudioFiles.join('\n'));
+    }
+
+    // Unmodified Audio Files
+    if (this.unmodifiedAudioFiles.length) {
+        // log('Unmodified', {
+        //     type: 'h2',
+        //     color: 'magenta'
+        // });
+        // log(this.unmodifiedAudioFiles.join('\n'));
+    }
+
+    // Error Audio Files
+    if (this.errorAudioFiles.length) {
+        log('Errors', {
+            type: 'h2',
+            color: 'red'
+        });
+        log(this.errorAudioFiles.join('\n'));
+    }
+};
+
+
 
 function isAudioFile(file) {
     const REGEX_AUDIO_FILE_TYPES = /\.m((p3)|(4a))$/;
@@ -153,15 +238,4 @@ function isAudioFile(file) {
     return false;
 }
 
-function log(message, color) {
-    let chockColor = chalk[color] || chalk.white;
-    let isObject = typeof message === 'object';
-    if (isObject) {
-        let options = {
-            noColor: true
-        };
-        console.log(chockColor(prettyjson.render(message, options)));
-    } else {
-        console.log(chockColor(message));
-    }
-}
+new songMetadata();
