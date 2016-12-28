@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import figlet from 'figlet';
 import prettyjson from 'prettyjson';
+import Table from 'cli-table';
 
 export default function (message = '', options = {}) {
     let type = options.type || 'p';
@@ -8,6 +9,9 @@ export default function (message = '', options = {}) {
     let chalkBackground = null,
         chalkFormat = null;
     let chalkMethod = chalk[chalkColor];
+    let jsonOptions = {
+        noColor: true
+    };
 
     let hasBackground = !!(options.background);
     if (hasBackground) {
@@ -29,11 +33,32 @@ export default function (message = '', options = {}) {
         });
     }
 
+    let isTable = type.charAt(0) === 't';
+    if (isTable) {
+        let borderColor = getChalkColor(options.borderColor || 'grey');
+        let table = new Table({ 
+            head: options.head || null,
+            style: {
+                head: ['white'],
+                border: [borderColor]
+            }
+        });
+
+        if (Array.isArray(message)) {
+            message = message.map(value => {
+                if (typeof value === 'object') {
+                    return prettyjson.render(value, jsonOptions);
+                }
+                return value;
+            });
+        }
+        table.push(message);
+
+        message = table.toString();
+    }
+
     let isObject = typeof message === 'object';
     if (isObject) {
-        let jsonOptions = {
-            noColor: true
-        };
         message = prettyjson.render(message, jsonOptions);
     }
 
@@ -77,7 +102,7 @@ function getChalkColor(color) {
 
     let grayAliases = ['grey'];
     let isGrayAlias = grayAliases.indexOf(color) > -1;
-    if(isGrayAlias) return 'gray';
+    if (isGrayAlias) return 'gray';
 
     return 'white';
 }

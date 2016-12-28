@@ -9,7 +9,7 @@ import log from './log';
 /* CONDITION FOR FILE TO BE MODIFIED */
 /* Default: missing the "album" */
 function isMissingMetadata(originalMetadata) {
-    return true; // can switch to true to always overwrite audio files
+    // return true; // can switch to true to always overwrite audio files
     return !originalMetadata.album;
 }
 
@@ -130,8 +130,9 @@ fn.walkDirectoryForAudioFiles = function (directory) {
                                     .then(self.addAudioFile(audioFile, 'modified'));
 
                             }).catch(function (e) {
-
-                                self.addAudioFile(audioFile, 'error');
+                                console.log('writing ', audioFile.currentMetadata);
+                                audioFile.writeMetadata(audioFile.currentMetadata)
+                                    .then(self.addAudioFile(audioFile, 'error'));
                             });
                     } else {
                         self.addAudioFile(audioFile, 'unmodified');
@@ -155,8 +156,7 @@ fn.addAudioFile = function (audioFile, status) {
         case 'modified':
             this.modifiedAudioFiles.push(audioFileString);
             logOptions = {
-                color: 'white',
-                background: 'blue'
+                color: 'blue'
             };
             break;
         case 'unmodified':
@@ -170,16 +170,27 @@ fn.addAudioFile = function (audioFile, status) {
     log(`\n${this.count}. ${audioFile.filename}`, logOptions);
 
     // Print Original Metadata
-    log(audioFile.originalMetadata, {
-        color: 'gray'
-    });
-
-    // Print Updated Metadata
     if (status === 'modified') {
-        log(audioFile.updatedMetadata, {
-            color: 'cyan'
+        log([audioFile.originalMetadata, audioFile.currentMetadata], {
+            type: 'table',
+            head: ['Original', 'Updated'],
+            borderColor: 'blue'
+        });
+    } else if (status === 'unmodified') {
+        log([audioFile.originalMetadata], {
+            type: 'table',
+            head: ['Original'],
+            borderColor: 'grey'
         });
     }
+
+
+    // // Print Updated Metadata
+    // if (status === 'modified') {
+    //     log(audioFile.currentMetadata, {
+    //         color: 'cyan'
+    //     });
+    // }
 
     // Print Error Message 
     if (status === 'error') {
@@ -194,7 +205,7 @@ fn.addAudioFile = function (audioFile, status) {
 };
 
 fn.end = function () {
-    this.printSummary();
+    // this.printSummary();
 };
 
 fn.printSummary = function () {

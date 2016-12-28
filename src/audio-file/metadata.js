@@ -2,23 +2,17 @@ import fs from 'fs';
 import ffmetadata from 'ffmetadata';
 import request from 'request';
 import jsonfile from 'jsonfile';
+import RSVP from 'rsvp';
 
 module.exports = {
 
     read: function (filepath) {
         return new Promise(function (resolve, reject) {
-            ffmetadata.read(filepath, function (err, data) {
+            ffmetadata.read(filepath, function (err, metadata) {
                 if (err) {
                     console.error("Error reading metadata", err);
                     reject();
                 } else {
-                    let metadata = {
-                        title: data.title,
-                        artist: data.artist,
-                        album: data.album,
-                        albumArtwork: data.albumArtwork,
-                        genre: data.genre
-                    };
                     resolve(metadata);
                 }
             });
@@ -26,7 +20,7 @@ module.exports = {
     },
 
     write: function (filepath, metadata) {
-        metadata = toFFMPEG(metadata);
+        metadata = this.toFFMPEG(metadata);
         let hasArtwork = metadata.albumArtworkPath ? true : false;
         let options = {};
 
@@ -52,7 +46,7 @@ module.exports = {
         if (!isValidJSON) return false;
 
         let metadata = jsonfile.readFileSync(filepath);
-        return metadata;
+        return this.toFFMPEG(metadata);
     },
 
     getMetadataFromSpotify: function (metadata = {}) {
@@ -85,45 +79,105 @@ module.exports = {
 
             let queryParams = '?q=' + query + '&type=' + type + '&limit=' + limit;
             let spotifyURL = 'https://api.spotify.com/v1/search' + queryParams;
+
             request(spotifyURL, function (error, response, body) {
-                if (!error && response.statusCode == 200) {
-                    let spotifyObj = JSON.parse(body);
-                    if (spotifyObj.hasOwnProperty('tracks')) {
-                        let trackMetadata = getMatchingTitleMetadata(spotifyObj.tracks, metadata.title, metadata.artist);
-                        // Get genres from artist metadata
-                        return self.getMetadataFromSpotify({
-                                artist: trackMetadata.artist
-                            })
-                            .then(artistMetadata => {
-                                // console.log('I got some genres for ', metadata.artist ,'... you want some? ', artistMetadata.genres);
-                                // trackMetadata.genre = artistMetadata.genres.join(', ');
-                                trackMetadata.genre = artistMetadata.genres[0];
-                                resolve(trackMetadata);
-                            });
-                    } else if (spotifyObj.hasOwnProperty('artists')) {
-                        resolve(getMatchingArtistMetadata(spotifyObj.artists, metadata.artist));
-                    } else {
-                        reject();
-                    }
+                if (error || response.statusCode !== 200) reject();
+
+                let spotifyObj = JSON.parse(body);
+                if (spotifyObj.hasOwnProperty('tracks')) {
+                    let trackMetadata = getMatchingTitleMetadata(spotifyObj.tracks, metadata);
+
+                    // Get artist metadata
+                    let trackFirstArtist = trackMetadata.artists[0];
+                    let artistMetadataApi = getMetadataFromSpotifyApi(trackFirstArtist.href);
+                    // Get album metadata
+                    let albumMetadataApi = getMetadataFromSpotifyApi(trackMetadata.album.href);
+                    RSVP.all([artistMetadataApi, albumMetadataApi])
+                        .then(additionalMetadata => {
+                            let artistMetadata = additionalMetadata[0];
+                            let albumMetadata = additionalMetadata[1];
+                            trackMetadata.genres = artistMetadata.genres; // Genres
+                            trackMetadata.date = albumMetadata.release_date; // Date
+                            trackMetadata.copyrights = albumMetadata.copyrights; // Copyrights
+                            trackMetadata.album_track_count = albumMetadata.tracks.items.length; // Album Track Count
+                            resolve(self.toFFMPEG(trackMetadata));
+                        })
+                        .catch(e => {
+                            reject(e);
+                        });
+                } else if (spotifyObj.hasOwnProperty('artists')) {
+                    resolve(getMatchingArtistMetadata(spotifyObj.artists, metadata.artist));
+                } else {
+                    reject();
                 }
+
             });
         });
+    },
+
+    toFFMPEG: function (metadata = {}) {
+
+        let hasAlbumTrackCount = !!(metadata.album_track_count && metadata.track_number);
+        if (hasAlbumTrackCount) {
+            metadata.track = '' + metadata.track_number + '/' + metadata.album_track_count;
+        } 
+
+        let hasDate = !!(metadata.date) && metadata.date.length > 4;
+        if (hasDate) {
+            let date = new Date(metadata.date);
+            metadata.date = date.getFullYear();
+        }
+
+        let hasCopyrights = Array.isArray(metadata.copyrights);
+        if (hasCopyrights) {
+            metadata.copyright = metadata.copyrights[0];
+        }
+
+        let hasGenres = Array.isArray(metadata.genres) && !metadata.genre;
+        if (hasGenres) {
+            metadata.genre = toTitleCase(metadata.genres[0]);
+        }
+
+        let hasArtists = Array.isArray(metadata.artists) && !metadata.artist;
+        if (hasArtists) {
+            metadata.album_artist = metadata.artists[0];
+            metadata.artist = metadata.artists.map(artist => {
+                return artist.name ? artist.name : artist;
+            }).join(' & ');
+        }
+
+        let hasAlbumArtworkImages = isObject(metadata.album) && Array.isArray(metadata.album.images);
+        if (hasAlbumArtworkImages) {
+            // metadata.album_artwork_url = metadata.album.images[0].url;
+        }
+
+        let disc = metadata.disc || metadata.diskNumber || metadata.disc_number || metadata.disk || null;
+        disc = '' + disc + '/' + disc;
+
+        let ffmpeg = {
+            title: metadata.title || metadata.songName || metadata.name || null,
+            artist: metadata.artist || metadata.author || null,
+            album_artist: metadata.album_artist || metadata.albumArtist || null,
+            album: metadata.album || null,
+            // album_artwork_url: metadata.albumArtwork || null,
+            copyright: metadata.copyright || null,
+            date: metadata.date || null,
+            genre: metadata.genre || null,
+            disc: disc || null,
+            track: metadata.track || metadata.trackNumber || metadata.track_number || null
+        };
+
+        for (let attribute in ffmpeg) {
+            let value = ffmpeg[attribute];
+            if (!value) {
+                delete ffmpeg[attribute];
+            } else if (isObject(value)) {
+                ffmpeg[attribute] = value.name || value.text || value.toString();
+            }
+        }
+        return ffmpeg;
     }
 };
-
-function toFFMPEG(metadata) {
-    let ffmpeg = {
-        title: metadata.title || metadata.songName || null,
-        artist: metadata.artist || metadata.author || null,
-        album: metadata.album || null,
-        albumArtwork: metadata.albumArtwork || metadata.albumArtworkURL || null,
-        genre: metadata.genre || null,
-        disc: metadata.disc || metadata.diskNumber || metadata.disk || null,
-        // explicit: metadata.explicit || null,
-        track: metadata.track || metadata.trackNumber || null
-    };
-    return ffmpeg;
-}
 
 function encodeURI(uri) {
     let encoded = uri;
@@ -140,9 +194,12 @@ function encodeURI(uri) {
     return encoded;
 }
 
-function getMatchingTitleMetadata(tracks, title, artist) {
-    let songTitle = title ? title.toUpperCase() : null;
-    let songArtist = artist ? artist.toUpperCase() : null;
+function getMatchingTitleMetadata(tracks, metadata) {
+    let {
+        title,
+        artist,
+        album
+    } = metadata;
 
     let items = tracks.items;
     let possibleMatches = [];
@@ -150,45 +207,56 @@ function getMatchingTitleMetadata(tracks, title, artist) {
     for (let index in items) {
 
         let track = items[index];
-        let artist = track.artists[0].name;
-        let album = track.album.name;
-        let title = track.name;
-        let albumArtworkURL = track.album.images[0].url;
-        let disc = track.disc_number;
-        let explicit = track.explicit;
-        let trackNumber = track.track_number;
-        let trackMetadata = {
-            title,
-            artist,
-            album,
-            albumArtworkURL,
-            disc,
-            explicit,
-            trackNumber
-        };
-        possibleMatches.push(trackMetadata);
-        let isMatchingTrack = (songArtist && songArtist.includes(artist.toUpperCase())) || !songArtist && songTitle === title.toUpperCase();
-        if (isMatchingTrack) return trackMetadata;
+        let artists = track.artists.map(trackArtist => {
+            return trackArtist.name;
+        });
+
+        possibleMatches.push(track);
+
+        let hasAlbum = !!(album);
+        let hasArtist = !!(artist);
+        if (hasAlbum && isMatch(album, track.album.name)) {
+            return track;
+        } else if (hasArtist && isMatch(artist, artists)) {
+            return track;
+        } else if (isMatch(title, track.name)) {
+            return track;
+        }
     }
-    console.log('Could not find match for ' + songTitle + ' in: ', possibleMatches);
+    console.log('Could not find match for ' + title + ' in: ', possibleMatches);
     return false;
 }
 
-function getMatchingArtistMetadata(artists, name) {
-
-    let items = artists.items;
-
-    for (let index in items) {
-
-        let artist = items[index];
-        let isMatchingArtist = artist.name.toLowerCase() === name.toLowerCase();
-        if (isMatchingArtist) return {
-            genres: artist.genres,
-            images: artist.images,
-            name: artist.name,
-            popularity: artist.popularity
-        };
+function isMatch(item1 = '', item2 = '') {
+    if (Array.isArray(item1)) {
+        item1 = item1.join(' ');
+    } else if (Array.isArray(item2)) {
+        item2 = item2.join(' ');
     }
-    console.log('Could not find matching artist ' + artist);
-    return false;
+    if (item1.length > item2.length) return item1.toUpperCase().includes(item2.toUpperCase());
+    return item2.toUpperCase().includes(item1.toUpperCase());
+}
+
+function isObject(item) {
+    return typeof item === 'object' && item !== null;
+}
+
+function isExactMatch(str1, str2) {
+    return str1.toLowerCase() === str2.toLowerCase();
+}
+
+function toTitleCase(str) {
+    return str.replace(/\w\S*/g, function (txt) {
+        return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+    });
+}
+
+function getMetadataFromSpotifyApi(url) {
+    return new RSVP.Promise(function (resolve, reject) {
+        request(url, (error, response, body) => {
+            if (error || response.statusCode !== 200) reject();
+            let metadata = JSON.parse(body);
+            resolve(metadata);
+        });
+    });
 }

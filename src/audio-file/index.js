@@ -3,15 +3,14 @@ import parseFilename from './parse-filename';
 
 let AudioFile = module.exports = function (filepath) {
     let parsedData = parseFilename(filepath);
-
     this.filepath = filepath;
     this.filename = parsedData.filename;
-    this.artist = parsedData.artist;
-    this.title = parsedData.title;
-    this.album = parsedData.album;
-    this.extension = parsedData.extension;
-    this.originalMetadata = {};
-    this.updatedMetadata = {};
+    this.currentMetadata = {};
+
+    this.assignMetadata(parsedData);
+
+    this.originalMetadata = this.currentMetadata;
+
     this.errorMessage = '';
 };
 
@@ -19,9 +18,16 @@ AudioFile.prototype.getCurrentMetadata = function () {
     let self = this;
     let filepath = this.filepath;
     return new Promise((resolve, reject) => {
-        metadata.read(filepath).then(currentMetadata => {
-            self.originalMetadata = currentMetadata;
-            resolve(currentMetadata);
+        metadata.read(filepath).then(localMetadata => {
+            self.originalMetadata = localMetadata;
+            if (!localMetadata.artist) {
+                localMetadata.artist = self.currentMetadata.artist;
+            }
+            if (!localMetadata.title) {
+                localMetadata.title = self.currentMetadata.title;
+            }
+            self.assignMetadata(localMetadata);
+            resolve(localMetadata);
         });
     });
 };
@@ -39,18 +45,14 @@ AudioFile.prototype.getExternalMetadata = function () {
 
         // Local JSON File
         if (localMetadata) {
-            localMetadata.source = 'json';
-            self.updatedMetadata = localMetadata;
+            self.assignMetadata(localMetadata);
             resolve(localMetadata);
         } else {
-
             // Spotify API
-            let currentMetadata = self.originalMetadata;
-            metadata.getMetadataFromSpotify(currentMetadata)
+            metadata.getMetadataFromSpotify(self.currentMetadata)
                 .then(spotifyMetadata => {
-                    spotifyMetadata.source = 'spotify';
-                    self.updatedMetadata = spotifyMetadata;
-                    resolve(spotifyMetadata);
+                    self.assignMetadata(spotifyMetadata);
+                    resolve(self.currentMetadata);
                 }).catch(function (e) {
                     self.errorMessage = 'Could not find metadata from Spotify';
                     reject(e);
@@ -65,4 +67,8 @@ AudioFile.prototype.writeMetadata = function (newMetadata) {
         resolve(metadata.write(self.filepath, newMetadata));
     });
 
+};
+
+AudioFile.prototype.assignMetadata = function (updatedMetadata) {
+    this.currentMetadata = updatedMetadata || this.currentMetadata;
 };

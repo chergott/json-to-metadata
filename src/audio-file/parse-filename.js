@@ -9,6 +9,7 @@ module.exports = function (filepath) {
         artist: parseArtist(filename),
         title: parseTitle(filename)
     };
+    
     return parsedData;
 };
 
