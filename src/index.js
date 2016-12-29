@@ -1,10 +1,11 @@
 import AudioFile from './audio-file';
+import metadata from './metadata';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import clear from 'clear';
 import inquirer from 'inquirer';
-import log from './log';
+import log from './utils/log';
 
 /* CONDITION FOR FILE TO BE MODIFIED */
 /* Default: missing the "album" */
@@ -18,7 +19,6 @@ let songMetadata = function () {
     this.audioFiles = [];
     this.unmodifiedAudioFiles = [];
     this.modifiedAudioFiles = [];
-    this.errorAudioFiles = [];
     this.count = 0;
     this.total = 0;
 };
@@ -107,105 +107,82 @@ fn.searchCustomDirectory = function () {
 fn.walkDirectoryForAudioFiles = function (directory) {
     log(`Finding audio files in ${directory}...`);
     let self = this;
-    let count = 0;
-    let totalAudioFiles = 0;
 
     fs.walk(directory)
         .on('data', (file) => {
+
             let filepath = file.path;
+
             if (!isAudioFile(filepath)) return;
 
             let audioFile = new AudioFile(filepath);
-            self.audioFiles.push(filepath);
 
-            audioFile.getCurrentMetadata()
-                .then((originalMetadata) => {
+            self.onFoundAudioFile(audioFile);
 
-                    if (isMissingMetadata(originalMetadata)) {
+            audioFile.getMetadata()
+                .then(metadata => {
+                    let hasNoMetadata = !metadata;
+                    self.onHasMetadata();
 
-                        audioFile.getExternalMetadata()
-                            .then((externalMetadata) => {
+                    if (hasNoMetadata) {
+                        self.onHasInvalidAudioFileMetadata(audioFile);
 
-                                audioFile.writeMetadata(externalMetadata)
-                                    .then(self.addAudioFile(audioFile, 'modified'));
-
-                            }).catch(function (e) {
-                                console.log('writing ', audioFile.currentMetadata);
-                                audioFile.writeMetadata(audioFile.currentMetadata)
-                                    .then(self.addAudioFile(audioFile, 'error'));
-                            });
                     } else {
-                        self.addAudioFile(audioFile, 'unmodified');
+                        self.onHasValidAudioFileMetadata(audioFile);
+                        audioFile.writeMetadata(metadata)
+                            .then(self.onModifiedAudioFile(audioFile));
                     }
+
+                    if (self.count === self.total) self.onFinish();
 
                 });
         })
         .on('end', function () {
-            self.total = self.audioFiles.length;
+            this.total = this.count;
         });
 };
 
-fn.addAudioFile = function (audioFile, status) {
+fn.onFoundAudioFile = function (audioFile) {
+    this.total++;
+    // log(`${this.total}. Finding metadata for ${audioFile.toString()}`);
+};
+
+
+
+fn.onModifiedAudioFile = function (audioFile) {
+    // log(`${this.count}. Writing metadata to ${audioFile.toString()}`);
+};
+
+fn.onUnmodifiedAudioFile = function (audioFile) {
+    log(`${audioFile.toString()}: did not modify`, {
+        color: 'magenta'
+    });
+};
+fn.onHasMetadata = function (audioFile) {
     this.count++;
-    let audioFileString = `\n${this.count}. ${audioFile.filename}`;
-    let logOptions = {
-        color: 'white'
-    };
-
-    switch (status) {
-        case 'modified':
-            this.modifiedAudioFiles.push(audioFileString);
-            logOptions = {
-                color: 'blue'
-            };
-            break;
-        case 'unmodified':
-            this.unmodifiedAudioFiles.push(audioFileString);
-            break;
-        default:
-            this.errorAudioFiles.push(audioFileString);
-            break;
-    }
-
-    log(`\n${this.count}. ${audioFile.filename}`, logOptions);
-
-    // Print Original Metadata
-    if (status === 'modified') {
-        log([audioFile.originalMetadata, audioFile.currentMetadata], {
-            type: 'table',
-            head: ['Original', 'Updated'],
-            borderColor: 'blue'
-        });
-    } else if (status === 'unmodified') {
-        log([audioFile.originalMetadata], {
-            type: 'table',
-            head: ['Original'],
-            borderColor: 'grey'
-        });
-    }
-
-
-    // // Print Updated Metadata
-    // if (status === 'modified') {
-    //     log(audioFile.currentMetadata, {
-    //         color: 'cyan'
-    //     });
-    // }
-
-    // Print Error Message 
-    if (status === 'error') {
-        log(audioFile.errorMessage, {
-            color: 'red'
-        });
-    }
-
-    if (this.total === this.count) {
-        this.end();
-    }
 };
 
-fn.end = function () {
-    // this.printSummary();
+fn.onHasInvalidAudioFileMetadata = function (audioFile) {
+    log(`${audioFile.toString()}: couldn't find any metadata`, {
+        color: 'magenta'
+    });
+};
+
+fn.onHasValidAudioFileMetadata = function (audioFile) {
+    log(`${audioFile.toString()}: Found metadata`, {
+        color: 'blue'
+    });
+    log([audioFile.originalMetadata, audioFile.currentMetadata], {
+        type: 'table',
+        head: ['Original', 'New'],
+        borderColor: 'blue'
+    });
+};
+
+fn.onFinish = function () {
+    log('Finished', {
+        color: 'cyan'
+    });
 };
 
 fn.printSummary = function () {

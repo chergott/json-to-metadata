@@ -35,23 +35,27 @@ export default function (message = '', options = {}) {
 
     let isTable = type.charAt(0) === 't';
     if (isTable) {
-        let borderColor = getChalkColor(options.borderColor || 'grey');
-        let table = new Table({ 
-            head: options.head || null,
-            style: {
-                head: ['white'],
-                border: [borderColor]
-            }
-        });
 
+
+        let borderColor = getChalkColor(options.borderColor || 'grey');
+        let columnWidths = [];
         if (Array.isArray(message)) {
             message = message.map(value => {
+                columnWidths.push(50);
                 if (typeof value === 'object') {
                     return prettyjson.render(value, jsonOptions);
                 }
                 return value;
             });
         }
+        let table = new Table({
+            head: options.head || null,
+            colWidths: columnWidths,
+            style: {
+                head: ['white'],
+                border: [borderColor]
+            }
+        });
         table.push(message);
 
         message = table.toString();
