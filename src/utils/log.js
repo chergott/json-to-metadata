@@ -1,112 +1,77 @@
 import chalk from 'chalk';
 import figlet from 'figlet';
-import prettyjson from 'prettyjson';
 import Table from 'cli-table';
+import prettyjson from 'prettyjson';
 
-export default function (message = '', options = {}) {
-    let type = options.type || 'p';
-    let chalkColor = getChalkColor(options.color);
-    let chalkBackground = null,
-        chalkFormat = null;
-    let chalkMethod = chalk[chalkColor];
-    let jsonOptions = {
-        noColor: true
-    };
 
-    let hasBackground = !!(options.background);
-    if (hasBackground) {
-        chalkBackground = getChalkColor(options.background);
-        chalkBackground = 'bg' + chalkBackground.charAt(0).toUpperCase() + chalkBackground.substr(1);
-        chalkMethod = chalkMethod[chalkBackground];
-    }
-
-    let hasFormat = !!(options.format);
-    if (hasFormat) {
-        chalkFormat = options.format;
-        chalkMethod = chalkMethod[chalkFormat];
-    }
-
-    let isHeading = type.charAt(0) === 'h';
-    if (isHeading) {
+export default function (message, options = {}) {
+    message = toString(message);
+    let {
+        type,
+        color
+    } = options;
+    if (type && type.charAt(0) === 'h') {
         message = figlet.textSync('\n' + message, {
             horizontalLayout: 'full'
         });
     }
 
-    let isTable = type.charAt(0) === 't';
-    if (isTable) {
-
-
-        let borderColor = getChalkColor(options.borderColor || 'grey');
-        let columnWidths = [];
-        if (Array.isArray(message)) {
-            message = message.map(value => {
-                columnWidths.push(50);
-                if (typeof value === 'object') {
-                    return prettyjson.render(value, jsonOptions);
-                }
-                return value;
-            });
-        }
-        let table = new Table({
-            head: options.head || null,
-            colWidths: columnWidths,
-            style: {
-                head: ['white'],
-                border: [borderColor]
-            }
-        });
-        table.push(message);
-
-        message = table.toString();
-    }
-
-    let isObject = typeof message === 'object';
-    if (isObject) {
-        message = prettyjson.render(message, jsonOptions);
-    }
-
-    if (!chalk.supportsColor) {
-        console.log(message);
-    } else {
+    if (chalk.supportsColor) {
+        let chalkColor = color ? getChalkColor(color) : 'white';
+        let chalkMethod = chalk[chalkColor];
         console.log(chalkMethod(message));
+    } else {
+        console.log(message);
+    }
+}
+
+function toString(value) {
+    let valueType = typeof value;
+    switch (valueType) {
+        case 'object':
+            const JSON_OPTIONS = {
+                noColor: true
+            };
+            return prettyjson.render(value, JSON_OPTIONS);
+        case 'number':
+            return '' + value + '.';
+        case 'string':
+            return value;
+        default:
+            console.log('weird valueType of: ', valueType);
     }
 }
 
 function getChalkColor(color) {
     if (!color) return 'white';
 
-    let supportedColors = ['red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white', 'gray', 'black'];
-    let isSupportedColor = supportedColors.indexOf(color) > -1;
+    let isSupportedColor = isColorAlias(['red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white', 'gray', 'black']);
     if (isSupportedColor) return color;
 
-    let redAliases = ['scarlet', 'ruby', 'crimson', 'maroon'];
-    let isRedAlias = redAliases.indexOf(color) > -1;
+    let isRedAlias = isColorAlias(['scarlet', 'ruby', 'crimson', 'maroon']);
     if (isRedAlias) return 'red';
 
-    let greenAliases = ['teal', 'olive', 'sage'];
-    let isGreenAlias = greenAliases.indexOf(color) > -1;
+    let isGreenAlias = isColorAlias(['teal', 'olive', 'sage']);
     if (isGreenAlias) return 'green';
 
-    let yellowAliases = ['orange', 'lemon', 'gold'];
-    let isYellowAlias = yellowAliases.indexOf(color) > -1;
+    let isYellowAlias = isColorAlias(['orange', 'lemon', 'gold']);
     if (isYellowAlias) return 'yellow';
 
-    let blueAliases = ['navy'];
-    let isBlueAlias = blueAliases.indexOf(color) > -1;
+    let isBlueAlias = isColorAlias(['navy']);
     if (isBlueAlias) return 'blue';
 
-    let magentaAliases = ['purple', 'violet'];
-    let isMagentaAlias = magentaAliases.indexOf(color) > -1;
+    let isMagentaAlias = isColorAlias(['purple', 'violet']);
     if (isMagentaAlias) return 'magenta';
 
-    let cyanAliases = ['sky', 'teal', 'turquoise'];
-    let isCyanAlias = cyanAliases.indexOf(color) > -1;
+    let isCyanAlias = isColorAlias(['sky', 'teal', 'turquoise']);
     if (isCyanAlias) return 'cyan';
 
-    let grayAliases = ['grey'];
-    let isGrayAlias = grayAliases.indexOf(color) > -1;
+    let isGrayAlias = isColorAlias(['grey']);
     if (isGrayAlias) return 'gray';
 
     return 'white';
+
+    function isColorAlias(colorsArr) {
+        return colorsArr.indexOf(color) > -1;
+    }
 }

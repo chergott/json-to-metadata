@@ -4,7 +4,7 @@
   "description": "Walks through a folder searching for audio files. Once an audio file is found, metadata can be found with either a local .json file containing all the metadata in json format or will use Spotify's public API to attempt to fill in the missing metadata.",
   "main": "index.js",
   "dependencies": {
-    "chalk": "^1.1.3",
+    "chalk": "^1.2.0",
     "clear": "0.0.1",
     "cli-table": "^0.3.1",
     "ffmetadata": "^1.4.0",
