@@ -2,44 +2,37 @@ import path from 'path';
 
 module.exports = function (filepath) {
     let filename = path.basename(filepath);
+    let artist = null,
+        title = null;
 
-    let parsedData = {
-        // extension: parseExtension(filename),
-        artist: parseArtist(filename),
-        title: parseTitle(filename)
-    };
+    let hyphenSplit = filename.split('-');
+    let hyphenCount = hyphenSplit.length;
 
-    return parsedData;
-};
-
-function parseExtension(filename) {
-    let extension = filename.slice(-3) || null;
-    return extension;
-}
-
-function parseArtist(filename) {
-    let filenameNoExtension = filename.slice(0, -4);
-    let hyphenIndex = filename.indexOf('-');
-    return hyphenIndex > 0 ? filenameNoExtension.substring(0, hyphenIndex) : null;
-}
-
-function parseTitle(filename) {
-    let filenameNoExtension = filename.slice(0, -4);
-    let hyphenIndex = filename.indexOf('-');
-    let title = hyphenIndex > -1 ? filenameNoExtension.substring(hyphenIndex + 1) : filenameNoExtension;
+    if (hyphenCount === 1) {
+        title = hyphenSplit[0];
+    } else if (hyphenSplit.length === 2) {
+        artist = hyphenSplit[0];
+        title = hyphenSplit[1];
+    } else {
+        title = hyphenSplit.pop();
+        artist = hyphenSplit.join('-');
+    }
 
     let featuringArtist = extractFeaturingArtist(title);
     if (featuringArtist)
         title = title.replace(featuringArtist, '');
 
-    return title ? title.trim() : title;
-}
+    // Remove trailing extension if it exists
+    title = title.split('.')[0];
+
+    return {
+        artist: artist ? artist.trim() : null,
+        title: title ? title.trim() : null,
+    };
+};
 
 function extractFeaturingArtist(title) {
     let featuringArtistRegEx = /\(feat.*\)+/i;
     let hasFeaturingArtist = featuringArtistRegEx.exec(title);
-    if (hasFeaturingArtist) {
-        return hasFeaturingArtist[0];
-    }
-    return null;
+    return hasFeaturingArtist ? hasFeaturingArtist[0] : null;
 }

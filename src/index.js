@@ -1,8 +1,9 @@
+#!/usr/bin/env node
 import fs from 'fs-extra';
 import os from 'os';
 import clear from 'clear';
+
 import AudioFile from './audio-file';
-import SongMetadata from './song-metadata';
 import prompt from './utils/prompt';
 import log from './utils/log';
 
@@ -13,7 +14,7 @@ import log from './utils/log';
 function init() {
     // let songMetadata = new SongMetadata();
     clear();
-    log('Song Metadata', {
+    log('Lute', {
         type: 'heading',
         color: 'cyan'
     });
@@ -56,68 +57,34 @@ function menu() {
 }
 
 function scanForAudioFiles(directory) {
-    let self = this;
-    let audioFiles = [];
 
-    fs.walk(directory)
-        .on('data', (file) => {
-            let filepath = file.path;
+    let audioFilePaths = fs.walkSync(directory).filter(filepath => {
+        return isAudioFile(filepath);
+    });
 
-            if (isAudioFile(filepath)) {
-                audioFiles.push(filepath);
-            } else {
-                return;
-            }
-        })
-        .on('end', function () {
-            audioFiles.forEach(filepath => {
-                let audioFile = new AudioFile(filepath);
-                audioFile.readMetadata()
-                    .then(audioFile.findMetadata()
-                        .then(spotifyMetadata => {
-                            audioFile.stageMetadata(spotifyMetadata);
-                            log(audioFile.toString() + '\n');
-                            audioFile.writeMetadata();
-                        }));
-            });
+    if (audioFilePaths.length) {
+        cleanAudioFiles(audioFilePaths);
+    } else {
+        log('Did not find any audio files in ' + directory, {
+            color: 'blue'
+        });
+    }
+
+}
+
+function cleanAudioFiles(audioFilePaths) {
+    let audioFile = new AudioFile(audioFilePaths.shift());
+    audioFile.clean()
+        .then(() => {
+            if (audioFilePaths.length)
+                cleanAudioFiles(audioFilePaths);
+        }).catch(() => {
+            if (audioFilePaths.length)
+                cleanAudioFiles(audioFilePaths);
         });
 }
 
-
 function isAudioFile(file) {
-    const REGEX_AUDIO_FILE_TYPES = /\.m(p3|4a)$/;
+    const REGEX_AUDIO_FILE_TYPES = /\.m[p3|4a]+$/;
     return REGEX_AUDIO_FILE_TYPES.test(file);
 }
-
-
-//  let audioFile = new AudioFile(filepath);
-//             self.onFoundAudioFile(audioFile);
-
-//             audioFile.getMetadata()
-//                 .then(metadata => {
-//                     self.onHasMetadata();
-
-//                     let hasInvalidMetadata = !metadata;
-//                     if (hasInvalidMetadata) {
-//                         self.onHasInvalidAudioFileMetadata(audioFile);
-
-//                     } else if (hasNewMetadata(audioFile)) {
-//                         self.onDiscoveredNewMetadata(audioFile);
-
-//                         audioFile.writeMetadata(metadata);
-
-//                     } else {
-//                         self.onDiscoveredSameMetadata(audioFile);
-//                     }
-
-//                     if (self.count === self.total) self.onFinish();
-
-//                 })
-//                 .catch(error => {
-//                     console.log('ERROR: ', error);
-//                     self.onHasInvalidAudioFileMetadata(audioFile);
-//                 });
-//         })
-//         .on('end', function () {
-//             this.total = this.number;
-//         });
