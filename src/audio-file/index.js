@@ -183,7 +183,7 @@ proto.toString = function () {
 
     if (this.hasStagedMetadata()) {
         metadataTable = new Table({
-            head: ['Original', 'Staged'],
+            head: [header, 'Staged'],
             colWidths: [50, 50],
             style: {
                 head: ['white'],
@@ -196,7 +196,7 @@ proto.toString = function () {
 
     } else {
         metadataTable = new Table({
-            head: ['Original'],
+            head: [header],
             colWidths: [50],
             style: {
                 head: ['white'],
@@ -207,5 +207,5 @@ proto.toString = function () {
         metadataTable.push([originalTable]);
     }
 
-    return header + '\n' + metadataTable.toString();
+    return metadataTable.toString();
 };
